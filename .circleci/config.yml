@@ -1,0 +1,108 @@
+version: 2.1
+
+# Paperclip fork (paper.hertek.net). Dest is `master` — no staging branch.
+# AI inline PR review is supposed to come from the CodeAnt Bitbucket app.
+# This workflow is the merge gate: secrets scan vs origin/master, plus a
+# headless CodeAnt review that fails the build on CRITICAL findings.
+# Break-glass: SKIP_CODEANT_GATE=1 (audited). Do not deploy from this pipeline.
+
+jobs:
+  codeant_scan:
+    docker:
+      - image: cimg/node:22.12
+    resource_class: small
+    working_directory: ~/project
+    steps:
+      - checkout
+      - run:
+          name: Install CodeAnt CLI
+          command: |
+            sudo npm install -g codeant-cli@^0.4.14
+            codeant --version
+      - run:
+          name: CodeAnt secrets gate (blocking on any detected secret)
+          environment:
+            CI: "1"
+          command: |
+            if [ "${SKIP_CODEANT_GATE:-0}" = "1" ]; then
+              echo "SKIP_CODEANT_GATE=1 — CodeAnt secrets gate bypassed (break-glass). This bypass is audited."
+              exit 0
+            fi
+            if [ -z "${CODEANT_API_TOKEN:-}" ] || [ -z "${BITBUCKET_API_TOKEN:-}" ]; then
+              echo "ERROR: CODEANT_API_TOKEN and/or BITBUCKET_API_TOKEN not set."
+              echo "Attach the CircleCI context 'codeant', or set SKIP_CODEANT_GATE=1 to bypass."
+              exit 1
+            fi
+            export BITBUCKET_TOKEN="${BITBUCKET_API_TOKEN}"
+            BASE_BRANCH="${CODEANT_BASE_BRANCH:-master}"
+            case "${BASE_BRANCH}" in
+              *[!A-Za-z0-9._/-]*|"")
+                echo "ERROR: invalid CODEANT_BASE_BRANCH value"
+                exit 1
+                ;;
+            esac
+            if [ "${CIRCLE_BRANCH:-}" = "${BASE_BRANCH}" ]; then
+              echo "On ${BASE_BRANCH}: running CodeAnt secrets gate on the last commit..."
+              codeant secrets --last-commit
+            else
+              if ! git fetch --no-tags --depth 50 origin "${BASE_BRANCH}"; then
+                echo "ERROR: could not fetch base branch '${BASE_BRANCH}' for the secrets gate."
+                exit 1
+              fi
+              echo "Running CodeAnt secrets gate against ${BASE_BRANCH}..."
+              codeant secrets --all --base "${BASE_BRANCH}"
+            fi
+
+  codeant_review:
+    docker:
+      - image: cimg/node:22.12
+    resource_class: medium
+    working_directory: ~/project
+    steps:
+      - checkout
+      - run:
+          name: Install CodeAnt CLI
+          command: |
+            sudo npm install -g codeant-cli@^0.4.14
+            codeant --version
+      - run:
+          name: CodeAnt headless review (fail on CRITICAL)
+          environment:
+            CI: "1"
+          command: |
+            if [ "${SKIP_CODEANT_GATE:-0}" = "1" ]; then
+              echo "SKIP_CODEANT_GATE=1 — CodeAnt review bypassed (break-glass). This bypass is audited."
+              exit 0
+            fi
+            if [ -z "${CODEANT_API_TOKEN:-}" ]; then
+              echo "ERROR: CODEANT_API_TOKEN not set. Attach the CircleCI context 'codeant'."
+              exit 1
+            fi
+            export BITBUCKET_TOKEN="${BITBUCKET_API_TOKEN:-}"
+            BASE_BRANCH="${CODEANT_BASE_BRANCH:-master}"
+            case "${BASE_BRANCH}" in
+              *[!A-Za-z0-9._/-]*|"")
+                echo "ERROR: invalid CODEANT_BASE_BRANCH value"
+                exit 1
+                ;;
+            esac
+            if [ "${CIRCLE_BRANCH:-}" = "${BASE_BRANCH}" ]; then
+              echo "On ${BASE_BRANCH}: skipping PR-diff review."
+              exit 0
+            fi
+            if ! git fetch --no-tags --depth 50 origin "${BASE_BRANCH}"; then
+              echo "ERROR: could not fetch base branch '${BASE_BRANCH}' for CodeAnt review."
+              exit 1
+            fi
+            echo "Running CodeAnt headless review against ${BASE_BRANCH} (fail on CRITICAL)..."
+            codeant review --base "${BASE_BRANCH}" --headless --fail-on CRITICAL
+
+workflows:
+  pr_gates:
+    jobs:
+      - codeant_scan:
+          context:
+            - codeant
+      - codeant_review:
+          context:
+            - codeant
