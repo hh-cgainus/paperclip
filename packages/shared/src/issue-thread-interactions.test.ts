@@ -45,7 +45,7 @@ describe("issue thread interaction schemas", () => {
     },
   );
 
-  it("parses request_confirmation payloads with default no-wake continuation", () => {
+  it("parses request_confirmation payloads with default assignee-wake continuation", () => {
     const parsed = createIssueThreadInteractionSchema.parse({
       kind: "request_confirmation",
       payload: {
@@ -63,7 +63,7 @@ describe("issue thread interaction schemas", () => {
 
     expect(parsed).toMatchObject({
       kind: "request_confirmation",
-      continuationPolicy: "none",
+      continuationPolicy: "wake_assignee",
       payload: {
         prompt: "Apply this plan?",
         acceptLabel: "Apply",

@@ -3300,6 +3300,7 @@ export function agentRoutes(
       assigneeAgentId: req.actor.agentId,
       status: "todo,in_progress,blocked",
       includeRoutineExecutions: true,
+      includeAttention: false,
       limit: ISSUE_LIST_DEFAULT_LIMIT,
     });
     const worktreeActivation = await resolveWorktreeRunExecutionActivationState({

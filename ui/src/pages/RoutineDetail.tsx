@@ -19,6 +19,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
+import { ISSUE_LIVE_RUN_FALLBACK_POLL_MS } from "../lib/liveRunPolling";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { buildMarkdownMentionOptions } from "../lib/company-members";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
@@ -204,7 +205,7 @@ export function RoutineDetail() {
     queryKey: queryKeys.issues.liveRuns(activeIssueId!),
     queryFn: () => heartbeatsApi.liveRunsForIssue(activeIssueId!),
     enabled: !!activeIssueId,
-    refetchInterval: 3000,
+    refetchInterval: ISSUE_LIVE_RUN_FALLBACK_POLL_MS,
   });
   const hasLiveRun = (liveRuns ?? []).length > 0;
   const { data: routineRuns } = useQuery({

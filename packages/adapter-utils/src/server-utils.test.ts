@@ -566,9 +566,10 @@ describe("runChildProcess", () => {
     expect(result.stdout).toBe("done");
   });
 
-  it("waits for onSpawn before sending stdin to the child", async () => {
-    const spawnDelayMs = 150;
+  it("does not wait for onSpawn before sending stdin to the child", async () => {
+    const spawnDelayMs = 200;
     const startedAt = Date.now();
+    let firstStdoutAt = 0;
     let onSpawnCompletedAt = 0;
 
     const result = await runChildProcess(
@@ -584,19 +585,46 @@ describe("runChildProcess", () => {
         stdin: "hello from stdin",
         timeoutSec: 5,
         graceSec: 1,
-        onLog: async () => {},
+        onLog: async (stream, chunk) => {
+          if (stream === "stdout" && chunk.includes("hello") && firstStdoutAt === 0) {
+            firstStdoutAt = Date.now();
+          }
+        },
         onSpawn: async () => {
           await new Promise((resolve) => setTimeout(resolve, spawnDelayMs));
           onSpawnCompletedAt = Date.now();
         },
       },
     );
-    const finishedAt = Date.now();
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("hello from stdin");
-    expect(onSpawnCompletedAt).toBeGreaterThanOrEqual(startedAt + spawnDelayMs);
-    expect(finishedAt - startedAt).toBeGreaterThanOrEqual(spawnDelayMs);
+    expect(firstStdoutAt).toBeGreaterThan(0);
+    expect(onSpawnCompletedAt).toBeGreaterThan(0);
+    expect(firstStdoutAt - startedAt).toBeLessThan(spawnDelayMs);
+    expect(onSpawnCompletedAt).toBeGreaterThanOrEqual(firstStdoutAt);
+  });
+
+  it("does not pause stdout on every chunk when onLog is keeping up", async () => {
+    const chunks: string[] = [];
+    const result = await runChildProcess(
+      randomUUID(),
+      process.execPath,
+      ["-e", "for (let i = 0; i < 20; i++) process.stdout.write('x');"],
+      {
+        cwd: process.cwd(),
+        env: {},
+        timeoutSec: 5,
+        graceSec: 1,
+        onLog: async (_stream, chunk) => {
+          chunks.push(chunk);
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("x".repeat(20));
+    expect(chunks.join("")).toBe("x".repeat(20));
   });
 
   it.skipIf(process.platform === "win32")(

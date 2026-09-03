@@ -6445,19 +6445,29 @@ export function issueRoutes(
       continuationSummary && redactLowTrust
         ? redactQuarantinedBodyForHigherTrust(continuationSummary)
         : continuationSummary;
-    const planReviewContext = await buildPlanReviewContext({
-      db,
-      companyId: issue.companyId,
-      issueId: issue.id,
-      issueWorkMode: issue.workMode,
-      includeForIssueComment: wakeCommentId !== null,
-    });
-    const documentReviewContext = await buildDocumentReviewContext({
-      db,
-      companyId: issue.companyId,
-      issueId: issue.id,
-      includeForIssueComment: wakeCommentId !== null,
-    });
+    const includeReviewQuery = req.query.includeReview;
+    const includeReview =
+      includeReviewQuery === "1" ||
+      includeReviewQuery === "true" ||
+      issue.workMode === "planning" ||
+      issue.workMode === "ask";
+    const planReviewContext = includeReview
+      ? await buildPlanReviewContext({
+          db,
+          companyId: issue.companyId,
+          issueId: issue.id,
+          issueWorkMode: issue.workMode,
+          includeForIssueComment: wakeCommentId !== null,
+        })
+      : null;
+    const documentReviewContext = includeReview
+      ? await buildDocumentReviewContext({
+          db,
+          companyId: issue.companyId,
+          issueId: issue.id,
+          includeForIssueComment: wakeCommentId !== null,
+        })
+      : null;
 
     const response = {
       issue: {

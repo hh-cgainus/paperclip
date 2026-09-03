@@ -438,6 +438,9 @@ function resumeReadable(readable: { resume: () => unknown; destroyed?: boolean }
   readable.resume();
 }
 
+/** Pause the child only when onLog work is actually backing up. */
+const MAX_PENDING_CHILD_LOG_CHUNKS = 8;
+
 export function resolvePathValue(obj: Record<string, unknown>, dottedPath: string) {
   const parts = dottedPath.split(".");
   let cursor: unknown = obj;
@@ -3421,6 +3424,7 @@ export async function runChildProcess(
         let stdout = "";
         let stderr = "";
         let logChain: Promise<void> = Promise.resolve();
+        let pendingLogChunks = 0;
         let terminalResultSeen = false;
         let terminalCleanupStarted = false;
         let terminalCleanupSignal: NodeJS.Signals | null = null;
@@ -3487,45 +3491,51 @@ export async function runChildProcess(
               }, opts.timeoutSec * 1000)
             : null;
 
+        const enqueueChildLog = (
+          stream: "stdout" | "stderr",
+          readable: { pause: () => unknown; resume: () => unknown; destroyed?: boolean } | null | undefined,
+          text: string,
+        ) => {
+          if (!readable) return;
+          pendingLogChunks += 1;
+          if (pendingLogChunks >= MAX_PENDING_CHILD_LOG_CHUNKS) readable.pause();
+          logChain = logChain
+            .then(() => opts.onLog(stream, text))
+            .catch((err) => onLogError(err, runId, `failed to append ${stream} log chunk`))
+            .finally(() => {
+              pendingLogChunks = Math.max(0, pendingLogChunks - 1);
+              maybeArmTerminalResultCleanup();
+              if (pendingLogChunks < MAX_PENDING_CHILD_LOG_CHUNKS) resumeReadable(readable);
+            });
+        };
+
         child.stdout?.on("data", (chunk: unknown) => {
           const readable = child.stdout;
           if (!readable) return;
-          readable.pause();
           const text = String(chunk);
           stdout = appendWithCap(stdout, text);
           maybeArmTerminalResultCleanup();
-          logChain = logChain
-            .then(() => opts.onLog("stdout", text))
-            .catch((err) => onLogError(err, runId, "failed to append stdout log chunk"))
-            .finally(() => {
-              maybeArmTerminalResultCleanup();
-              resumeReadable(readable);
-            });
+          enqueueChildLog("stdout", readable, text);
         });
 
         child.stderr?.on("data", (chunk: unknown) => {
           const readable = child.stderr;
           if (!readable) return;
-          readable.pause();
           const text = String(chunk);
           stderr = appendWithCap(stderr, text);
           maybeArmTerminalResultCleanup();
-          logChain = logChain
-            .then(() => opts.onLog("stderr", text))
-            .catch((err) => onLogError(err, runId, "failed to append stderr log chunk"))
-            .finally(() => {
-              maybeArmTerminalResultCleanup();
-              resumeReadable(readable);
-            });
+          enqueueChildLog("stderr", readable, text);
         });
 
         const stdin = child.stdin;
         if (opts.stdin != null && stdin) {
-          void spawnPersistPromise.finally(() => {
-            if (child.killed || stdin.destroyed) return;
+          // Persist pid/metadata in parallel. Waiting here delays first-token
+          // for every stdin-fed adapter (Claude local) by the DB round trip.
+          void spawnPersistPromise;
+          if (!child.killed && !stdin.destroyed) {
             stdin.write(opts.stdin as string);
             stdin.end();
-          });
+          }
         }
 
         child.on("error", (err: Error) => {
@@ -3551,6 +3561,7 @@ export async function runChildProcess(
           clearTerminalCleanupTimers();
           runningProcesses.delete(runId);
           void logChain.finally(() => {
+            void spawnPersistPromise.finally(() => {
             void Promise.resolve()
               .then(() => target.cleanup?.())
               .finally(() => {
@@ -3575,6 +3586,7 @@ export async function runChildProcess(
                   : null,
               });
               });
+            });
           });
         });
       })

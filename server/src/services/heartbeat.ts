@@ -14522,6 +14522,13 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }
       issueContext = await getIssueExecutionContext(agent.companyId, issueId);
     }
+    if (issueId && isHeartbeatRunRuntimeStatusActive(run.status)) {
+      recordHeartbeatRunRuntimeProgress(
+        run,
+        { phase: "adapter_startup", message: "Preparing workspace" },
+        issueId,
+      );
+    }
     const wakeCommentId = deriveCommentId(context, null);
     const wakeCommentContext =
       issueContext && wakeCommentId
@@ -16123,6 +16130,28 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
         outputSeq += 1;
         const chunkSeq = outputSeq;
+        const payloadChunk =
+          sanitizedChunk.length > MAX_LIVE_LOG_CHUNK_BYTES
+            ? sanitizedChunk.slice(sanitizedChunk.length - MAX_LIVE_LOG_CHUNK_BYTES)
+            : sanitizedChunk;
+
+        // UI first-token: publish before durable append so the issue transcript
+        // does not wait on filesystem/redaction I/O.
+        publishLiveEvent({
+          companyId: run.companyId,
+          type: "heartbeat.run.log",
+          payload: {
+            runId: run.id,
+            agentId: run.agentId,
+            issueId,
+            ts,
+            seq: chunkSeq,
+            stream,
+            chunk: payloadChunk,
+            truncated: payloadChunk.length !== sanitizedChunk.length,
+          },
+        });
+
         let appendedBytes = 0;
         if (handle) {
           appendedBytes = await runLogStore.append(handle, {
@@ -16162,26 +16191,6 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           });
           if (touchedStatus) publishHeartbeatRunRuntimeProgress(touchedStatus);
         }
-
-        const payloadChunk =
-          sanitizedChunk.length > MAX_LIVE_LOG_CHUNK_BYTES
-            ? sanitizedChunk.slice(sanitizedChunk.length - MAX_LIVE_LOG_CHUNK_BYTES)
-            : sanitizedChunk;
-
-        publishLiveEvent({
-          companyId: run.companyId,
-          type: "heartbeat.run.log",
-          payload: {
-            runId: run.id,
-            agentId: run.agentId,
-            issueId,
-            ts,
-            seq: chunkSeq,
-            stream,
-            chunk: payloadChunk,
-            truncated: payloadChunk.length !== sanitizedChunk.length,
-          },
-        });
       };
       if (runScopedMentionedSkillKeys.length > 0) {
         await onLog(
@@ -16278,7 +16287,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           }
         }
         const modelProfileMetadata = modelProfileRunMetadata(modelProfileApplication);
-        await appendRunEvent(currentRun, seq++, {
+        const invokeSeq = seq++;
+        // Do not block adapter spawn on the invoke audit row.
+        void appendRunEvent(currentRun, invokeSeq, {
           eventType: "adapter.invoke",
           stream: "system",
           level: "info",
@@ -16287,6 +16298,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             ...(meta as unknown as Record<string, unknown>),
             ...(modelProfileMetadata ? { modelProfile: modelProfileMetadata } : {}),
           },
+        }).catch((err) => {
+          logger.warn({ err, runId: currentRun.id }, "failed to persist adapter.invoke event");
         });
       };
 

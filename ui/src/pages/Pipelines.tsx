@@ -116,6 +116,7 @@ import { formatLearningEvent, groupLearningEventsByDay } from "../lib/pipeline-l
 import { getPipelineStageColumnTone, pipelineStageAutomationSettingsHref } from "../lib/pipeline-stage-presentation";
 import { queryKeys } from "../lib/queryKeys";
 import { keepPreviousDataForSameQueryTail } from "../lib/query-placeholder-data";
+import { ISSUE_LIVE_RUN_FALLBACK_POLL_MS } from "../lib/liveRunPolling";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { shouldDisableRerunForPermission, type LivenessRetryKind } from "../lib/pipeline-liveness";
 import { cn, formatNumber, relativeTime } from "../lib/utils";
@@ -2051,7 +2052,7 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
     queryKey: conversationIssueId ? queryKeys.issues.liveRuns(conversationIssueId) : ["pipeline-item", caseId, "missing-conversation-live-runs"],
     queryFn: () => heartbeatsApi.liveRunsForIssue(conversationIssueId!),
     enabled: Boolean(conversationIssueId),
-    refetchInterval: 3000,
+    refetchInterval: ISSUE_LIVE_RUN_FALLBACK_POLL_MS,
     placeholderData: conversationIssueId
       ? keepPreviousDataForSameQueryTail<LiveRunForIssue[]>(conversationIssueId)
       : undefined,
@@ -2062,7 +2063,7 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
     queryKey: conversationIssueId ? queryKeys.issues.activeRun(conversationIssueId) : ["pipeline-item", caseId, "missing-conversation-active-run"],
     queryFn: () => heartbeatsApi.activeRunForIssue(conversationIssueId!),
     enabled: Boolean(conversationIssueId && activeConversationIssue && shouldTrackIssueActiveRun(activeConversationIssue)),
-    refetchInterval: conversationLiveRunCount > 0 ? false : 3000,
+    refetchInterval: conversationLiveRunCount > 0 ? false : ISSUE_LIVE_RUN_FALLBACK_POLL_MS,
     placeholderData: conversationIssueId
       ? keepPreviousDataForSameQueryTail<ActiveRunForIssue | null>(conversationIssueId)
       : undefined,

@@ -81,6 +81,11 @@ export default defineConfig({
       PAPERCLIP_BIND: "loopback",
       PAPERCLIP_DEPLOYMENT_MODE: "local_trusted",
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
+      // Isolate doctor managed-install checks from the operator ~/.local/bin shim.
+      HOME: PAPERCLIP_HOME,
+      PAPERCLIP_UPDATE_CHECK: "0",
+      CHOKIDAR_USEPOLLING: "1",
+      CHOKIDAR_INTERVAL: "2000",
     },
   },
   outputDir: "./test-results",
