@@ -16,6 +16,7 @@ import { useToastActions } from "../context/ToastContext";
 import { cn, relativeTime } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import { keepPreviousDataForSameQueryTail } from "../lib/query-placeholder-data";
+import { ISSUE_LIVE_RUN_FALLBACK_POLL_MS } from "../lib/liveRunPolling";
 import { describeRunRetryState } from "../lib/runRetryState";
 import { readSourceResolvedWatchdogFold } from "../lib/source-resolved-watchdog-fold";
 import { SourceResolvedFoldBadge } from "./SourceResolvedFoldBadge";
@@ -432,14 +433,14 @@ export function IssueRunLedger({
     queryKey: queryKeys.issues.liveRuns(issueId),
     queryFn: () => heartbeatsApi.liveRunsForIssue(issueId),
     enabled: hasLiveRuns,
-    refetchInterval: 3000,
+    refetchInterval: ISSUE_LIVE_RUN_FALLBACK_POLL_MS,
     placeholderData: keepPreviousDataForSameQueryTail<LiveRunForIssue[]>(issueId),
   });
   const { data: activeRun = null } = useQuery({
     queryKey: queryKeys.issues.activeRun(issueId),
     queryFn: () => heartbeatsApi.activeRunForIssue(issueId),
     enabled: hasLiveRuns || issueStatus === "in_progress",
-    refetchInterval: hasLiveRuns ? false : 3000,
+    refetchInterval: hasLiveRuns ? false : ISSUE_LIVE_RUN_FALLBACK_POLL_MS,
     placeholderData: keepPreviousDataForSameQueryTail<ActiveRunForIssue | null>(issueId),
   });
   const watchdogDecision = useMutation({

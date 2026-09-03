@@ -568,6 +568,8 @@ export interface IssueFilters {
   includeBlockedBy?: boolean;
   includeBlockedInboxAttention?: boolean;
   includeLiveDescendantSummary?: boolean;
+  /** When false, skip attention/productivity/last-activity hydration (inbox-lite). */
+  includeAttention?: boolean;
   hasPlanDocument?: boolean;
   lowTrustBoundary?: LowTrustBoundary & { companyId: string };
   q?: string;
@@ -5580,6 +5582,7 @@ export function issueService(db: Db) {
       const includeBlockedBy = filters?.includeBlockedBy === true;
       const includeBlockedInboxAttention = filters?.includeBlockedInboxAttention === true;
       const includeLiveDescendantSummary = filters?.includeLiveDescendantSummary === true;
+      const includeAttention = filters?.includeAttention !== false;
       const rawSearch = filters?.q?.trim() ?? "";
       const hasSearch = rawSearch.length > 0;
       const escapedSearch = hasSearch ? escapeLikePattern(rawSearch) : "";
@@ -5738,7 +5741,9 @@ export function issueService(db: Db) {
         contextUserId
           ? userReadStatsForIssues(db, companyId, contextUserId, issueIds)
           : Promise.resolve([]),
-        lastActivityStatsForIssues(db, companyId, issueIds),
+        includeAttention
+          ? lastActivityStatsForIssues(db, companyId, issueIds)
+          : Promise.resolve([]),
         contextUserId
           ? inboxArchiveRowsForIssues(db, companyId, contextUserId, issueIds)
           : Promise.resolve([]),
@@ -5758,9 +5763,15 @@ export function issueService(db: Db) {
         productivityReviewByIssueId,
         blockedInboxAttentionByIssueId,
       ] = await Promise.all([
-        listIssueBlockerAttentionMap(db, companyId, withRuns),
-        listIssueReviewAttentionMap(db, companyId, withRuns),
-        listIssueProductivityReviewMap(db, companyId, issueIds),
+        includeAttention
+          ? listIssueBlockerAttentionMap(db, companyId, withRuns)
+          : Promise.resolve(new Map()),
+        includeAttention
+          ? listIssueReviewAttentionMap(db, companyId, withRuns)
+          : Promise.resolve(new Map()),
+        includeAttention
+          ? listIssueProductivityReviewMap(db, companyId, issueIds)
+          : Promise.resolve(new Map()),
         includeBlockedInboxAttention
           ? listIssueBlockedInboxAttentionMap(db, companyId, withRuns)
           : Promise.resolve(new Map<string, IssueBlockedInboxAttention>()),

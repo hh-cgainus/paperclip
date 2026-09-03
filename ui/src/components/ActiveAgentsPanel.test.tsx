@@ -10,6 +10,8 @@ const mockHeartbeatsApi = vi.hoisted(() => ({
   liveRunsForCompany: vi.fn(),
 }));
 
+const liveTranscriptOptions = vi.hoisted(() => [] as { enableRealtimeUpdates?: boolean }[]);
+
 const mockIssuesApi = vi.hoisted(() => ({
   get: vi.fn(),
 }));
@@ -39,10 +41,13 @@ vi.mock("./RunChatSurface", () => ({
 }));
 
 vi.mock("./transcript/useLiveRunTranscripts", () => ({
-  useLiveRunTranscripts: () => ({
-    transcriptByRun: new Map(),
-    hasOutputForRun: () => false,
-  }),
+  useLiveRunTranscripts: (options: { enableRealtimeUpdates?: boolean }) => {
+    liveTranscriptOptions.push(options);
+    return {
+      transcriptByRun: new Map(),
+      hasOutputForRun: () => false,
+    };
+  },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,6 +129,7 @@ describe("ActiveAgentsPanel", () => {
     document.body.appendChild(container);
     mockHeartbeatsApi.liveRunsForCompany.mockResolvedValue([1, 2, 3, 4, 5].map(createRun));
     mockIssuesApi.get.mockRejectedValue(new Error("Issue not found"));
+    liveTranscriptOptions.length = 0;
   });
 
   afterEach(() => {
@@ -146,6 +152,7 @@ describe("ActiveAgentsPanel", () => {
       );
     });
     await flushReact();
+    expect(liveTranscriptOptions.some((options) => options.enableRealtimeUpdates === true)).toBe(true);
 
     expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith("company-1", {
       minCount: 4,

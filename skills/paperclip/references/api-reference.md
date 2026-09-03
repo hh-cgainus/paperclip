@@ -916,8 +916,7 @@ Resolver governance:
 
 Rules:
 
-- `continuationPolicy: "wake_assignee"` wakes the assignee only after a `request_confirmation` is accepted.
-- Rejection does not wake the assignee by default. The board/user can add a normal comment when revisions are needed.
+- `request_confirmation` defaults to `continuationPolicy: "wake_assignee"` (accept and reject both wake). Use `"wake_assignee_on_accept"` to skip rejection wakes. `"none"` never wakes — only use it when you truly do not need to resume.
 - Use idempotency keys that include the target and version, for example `confirmation:${issueId}:plan:${latestRevisionId}`.
 - Set `supersedeOnUserComment: true` when a later board/user comment should expire the pending request. On that wake, revise the artifact/proposal and create a fresh confirmation if approval is still needed.
 - A pending interaction is an explicit waiting path. Before ending the heartbeat, update the source issue into a visible waiting posture, normally `in_review`, and leave a comment that names the response needed and the effective audience.
@@ -993,7 +992,7 @@ Payload field reference (`RequestCheckboxConfirmationPayload`):
 
 Envelope defaults that differ from other kinds:
 
-- `continuationPolicy` defaults to `"wake_assignee"` for `request_checkbox_confirmation` (same as `suggest_tasks` and `ask_user_questions`). Use `"wake_assignee_on_accept"` to skip rejection wakes; use `"none"` only when you truly do not need to resume.
+- `continuationPolicy` defaults to `"wake_assignee"` for `request_confirmation`, `request_checkbox_confirmation`, `suggest_tasks`, and `ask_user_questions`. Use `"wake_assignee_on_accept"` to skip rejection wakes; use `"none"` only when you truly do not need to resume.
 
 Accept (board action, requires board/user role; agents creating the interaction cannot accept):
 

@@ -140,6 +140,14 @@ vi.mock("../services/execution-workspaces.js", () => ({
   STALE_REOPEN_PENDING_CONSUMPTION_GRACE_MS: 5 * 60 * 1000,
 }));
 
+const mockBuildPlanReviewContext = vi.hoisted(() => vi.fn(async () => ({ kind: "plan" })));
+const mockBuildDocumentReviewContext = vi.hoisted(() => vi.fn(async () => ({ kind: "doc" })));
+
+vi.mock("../services/plan-review-context.js", () => ({
+  buildPlanReviewContext: (...args: unknown[]) => mockBuildPlanReviewContext(...args),
+  buildDocumentReviewContext: (...args: unknown[]) => mockBuildDocumentReviewContext(...args),
+}));
+
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -539,5 +547,37 @@ describe.sequential("issue goal context routes", () => {
         }),
       ],
     }));
+  });
+
+  it("skips plan and document review context for standard heartbeat-context", async () => {
+    mockIssueService.getById.mockResolvedValue({
+      ...legacyProjectLinkedIssue,
+      workMode: "standard",
+    });
+
+    const res = await request(createApp()).get(
+      "/api/issues/11111111-1111-4111-8111-111111111111/heartbeat-context",
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockBuildPlanReviewContext).not.toHaveBeenCalled();
+    expect(mockBuildDocumentReviewContext).not.toHaveBeenCalled();
+    expect(res.body.planReviewContext).toBeNull();
+    expect(res.body.documentReviewContext).toBeNull();
+  });
+
+  it("loads plan review context for standard heartbeat-context when includeReview=1", async () => {
+    mockIssueService.getById.mockResolvedValue({
+      ...legacyProjectLinkedIssue,
+      workMode: "standard",
+    });
+
+    const res = await request(createApp()).get(
+      "/api/issues/11111111-1111-4111-8111-111111111111/heartbeat-context?includeReview=1",
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockBuildPlanReviewContext).toHaveBeenCalled();
+    expect(res.body.planReviewContext).toEqual({ kind: "plan" });
   });
 });
